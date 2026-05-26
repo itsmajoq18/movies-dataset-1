@@ -306,6 +306,67 @@ def render_statistics():
     st.info(mejores_asesores)
 
 
+def render_sales_page(cliente, zona, horarios, hotel, destino, califica, paquete, vigencia, deducible, tipo_presupuesto, presupuesto, ganancia, total, motivo):
+    st.subheader("Ventas")
+    if not cliente.strip():
+        st.info("Complete los datos del cliente para ver la recomendación.")
+        return
+
+    st.markdown(f"""
+    <div class="box aprobado">
+    Cliente: {cliente}
+    <br>
+    Paquete ideal: <strong>{paquete}</strong>
+    <br>
+    Vigencia: {vigencia}
+    <br>
+    Deducible: <strong>${deducible:,.2f}</strong>
+    <br>
+    {tipo_presupuesto}: <strong>${presupuesto:,.2f}</strong>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if zona != "N/A":
+        st.subheader("Zona y horario")
+        st.info(f"Zona detectada: {zona} — Horario: {horarios.get(zona, 'N/A')}")
+
+    st.subheader("Destinos y hoteles disponibles")
+    destino_cols = st.columns(len(hoteles))
+    for idx, (ciudad, lista_hoteles) in enumerate(hoteles.items()):
+        destino_cols[idx].markdown(f"""
+            <div class="box destino">
+            <strong>{ciudad}</strong>
+            <br>
+            {('<br>'.join(['- ' + hotel_item for hotel_item in lista_hoteles]))}
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.subheader("Speech")
+    if califica:
+        st.success(
+            """
+            El cliente califica para un paquete especial. Puede comunicarle que el viaje ya está aprobado y que solo necesita cubrir el deducible para comenzar a reservar.
+            Recuérdale que este paquete ofrece una vigencia amplia y un plan diseñado para maximizar su experiencia de vacaciones con el menor esfuerzo posible.
+            """
+        )
+    else:
+        st.warning(
+            """
+            El cliente no cumple los requisitos para los paquetes preferenciales en este momento.
+            Ofrece la alternativa MIX & MATCH, destacando los beneficios del plan y la posibilidad de mantener el interés mientras se busca una opción adecuada.
+            """
+        )
+
+    st.subheader("Comisión")
+    st.markdown(f"""
+    <div class="comision">
+    Total: ${total:,.2f} USD
+    <br><br>
+    Ganancia por unidad: ${ganancia:,.2f}
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def compute_package(estado_civil, edad, residencia, presupuesto):
     califica = False
     paquete = "MIX & MATCH"
@@ -427,276 +488,312 @@ if "login_message" not in st.session_state:
 # SIDEBAR
 # -----------------------------------
 
-st.sidebar.header("Acceso")
+if not st.session_state["is_authenticated"]:
+    st.sidebar.header("Acceso")
+    st.sidebar.text_input("Usuario", key="login_username")
+    st.sidebar.text_input("Contraseña", type="password", key="login_password")
+    if st.sidebar.button("Iniciar sesión"):
+        login()
 
-st.sidebar.text_input("Usuario", key="login_username")
-st.sidebar.text_input("Contraseña", type="password", key="login_password")
-if st.sidebar.button("Iniciar sesión"):
-    login()
-
-if st.session_state["login_message"]:
-    if st.session_state["is_authenticated"]:
-        st.sidebar.success(st.session_state["login_message"])
-    else:
+    if st.session_state["login_message"]:
         st.sidebar.error(st.session_state["login_message"])
-
-if st.session_state["is_authenticated"]:
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**Conectado como:** {st.session_state['user']}")
-    st.sidebar.markdown(f"**Rol:** {st.session_state['user_role']}")
-    if st.sidebar.button("Cerrar sesión"):
-        logout()
-    st.sidebar.markdown("---")
-    st.sidebar.header("Datos del cliente")
-
-    cliente = st.sidebar.text_input("Nombre del cliente", key="cliente")
-else:
     st.sidebar.info("Ingrese su usuario y contraseña para continuar.")
     st.stop()
-
-estado = st.sidebar.selectbox(
-    "Estado",
-    sorted(list(zonas.keys())),
-    key="estado"
-)
-
-estado_civil = st.sidebar.selectbox(
-    "Estado civil",
-    [
-        "Casado / Convive",
-        "Mujer Soltera",
-        "Hombre Soltero",
-        "Divorciado"
-    ],
-    key="estado_civil"
-)
-
-edad = st.sidebar.number_input(
-    "Edad",
-    18,
-    100,
-    key="edad"
-)
-
-residencia = st.sidebar.selectbox(
-    "Residente USA/Canadá?",
-    ["Sí", "No"],
-    key="residencia"
-)
-
-st.sidebar.markdown("---")
-
-st.sidebar.subheader("Capacidad de pago")
-
-tipo_presupuesto = st.sidebar.radio(
-    "Qué dato ingresa",
-    ["Ingreso mensual", "Presupuesto de viaje"],
-    index=0,
-    key="tipo_presupuesto"
-)
-
-presupuesto = st.sidebar.number_input(
-    "Monto",
-    min_value=0,
-    value=1800,
-    step=100,
-    key="presupuesto"
-)
-
-deducible = st.sidebar.number_input(
-    "Monto deducible",
-    150,
-    500,
-    399,
-    key="deducible"
-)
-
-st.sidebar.markdown("---")
-
-porcentaje = st.sidebar.radio(
-    "Comisión (%)",
-    [6, 8],
-    index=0,
-    key="porcentaje"
-) / 100
-
-ventas = 1
-st.sidebar.markdown("Solo se puede vender 1 paquete por registro.")
-
-st.sidebar.markdown("---")
-
-st.sidebar.button("Limpiar formulario", on_click=reset_form)
-
-register_click = st.sidebar.button("Registrar venta")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("**Asesor:** Juan Pablo Quiroga")
-st.sidebar.markdown("**Admin:** María José Quiroga")
-
-# -----------------------------------
-# LÓGICA
-# -----------------------------------
-
-zona = zonas[estado]
-destino = st.session_state.get("destino", "N/A")
-hotel = st.session_state.get("hotel", "N/A")
-califica, paquete, vigencia, motivo = compute_package(estado_civil, edad, residencia, presupuesto)
-
-ganancia = deducible * porcentaje
-
-total = ganancia * ventas
-
-if register_click:
-    if not cliente.strip():
-        st.sidebar.warning("Ingrese el nombre del cliente antes de registrar.")
-    else:
-        record = {
-            "timestamp": datetime.now().isoformat(sep=" ", timespec="seconds"),
-            "cliente": cliente,
-            "estado": estado,
-            "estado_civil": estado_civil,
-            "edad": edad,
-            "residencia": residencia,
-            "zona": zona,
-            "destino": st.session_state["destino"],
-            "hotel": st.session_state["hotel"],
-            "paquete": paquete,
-            "vigencia": vigencia,
-            "deducible": deducible,
-            "tipo_presupuesto": tipo_presupuesto,
-            "presupuesto": presupuesto,
-            "comision": porcentaje,
-            "ventas": ventas,
-            "ganancia_unitaria": ganancia,
-            "total": total
-        }
-        save_sale(record)
-        st.session_state["message"] = "Venta registrada correctamente. Puede iniciar una nueva operación con Limpiar formulario."
-        st.session_state["sale_registered"] = True
 
 # -----------------------------------
 # INTERFAZ
 # -----------------------------------
 
+if st.session_state["user_role"] == "admin":
+    admin_pages = [
+        "📊 Dashboard",
+        "👥 Usuarios",
+        "📞 Clientes",
+        "🏨 Hoteles",
+        "💰 Comisiones",
+        "📈 Estadísticas",
+        "⚙️ Configuración",
+        "Ventas"
+    ]
+else:
+    admin_pages = ["Ventas"]
+
+nav_cols = st.columns(len(admin_pages))
+for index, page_name in enumerate(admin_pages):
+    if nav_cols[index].button(page_name, key=f"nav_{page_name}"):
+        st.session_state["page"] = page_name
+
+if "page" not in st.session_state:
+    st.session_state["page"] = "📊 Dashboard" if st.session_state["user_role"] == "admin" else "Ventas"
+
 st.title("Cerrador Pro")
-st.write("Sistema de calificación y registro de ventas para paquetes vacacionales.")
+if st.session_state["user_role"] == "admin":
+    st.write(f"Bienvenida, {st.session_state['user']}. Panel de administración activo.")
+else:
+    st.write(f"Bienvenido, {st.session_state['user']}. Sistema de ventas activo.")
 
-btn_col1, btn_col2 = st.columns(2)
-with btn_col1:
-    if st.button("Ver registros de ventas"):
-        st.session_state["show_records"] = True
-        st.session_state["show_stats"] = False
-with btn_col2:
-    if st.session_state["user_role"] == "admin":
-        if st.button("Estadísticas"):
-            st.session_state["show_stats"] = True
-            st.session_state["show_records"] = False
-    else:
-        st.info("Estadísticas solo disponibles para el admin.")
+col_title, col_logout = st.columns([5, 1])
+with col_logout:
+    if st.button("Cerrar sesión"):
+        logout()
 
-if "show_records" not in st.session_state:
-    st.session_state["show_records"] = False
-if "show_stats" not in st.session_state:
-    st.session_state["show_stats"] = False
+show_sales_sidebar = st.session_state["user_role"] == "asesor" or st.session_state["page"] == "Ventas"
 
-if st.session_state["show_records"]:
-    ventas_guardadas = load_sales()
-    if ventas_guardadas:
-        st.subheader("Registros de ventas")
-        st.dataframe(ventas_guardadas, use_container_width=True)
-        if st.button("Ocultar registros"):
-            st.session_state["show_records"] = False
-    else:
-        st.info("No hay ventas registradas aún.")
+if show_sales_sidebar:
+    st.sidebar.header("Sistema de ventas")
+    cliente = st.sidebar.text_input("Nombre del cliente", key="cliente")
 
-if st.session_state["show_stats"]:
-    st.subheader("Estadísticas")
-    if st.button("Ocultar estadísticas"):
-        st.session_state["show_stats"] = False
-    render_statistics()
+    estado = st.sidebar.selectbox(
+        "Estado",
+        sorted(list(zonas.keys())),
+        key="estado"
+    )
 
-st.subheader("Destinos y hoteles disponibles")
-for ciudad, lista_hoteles in hoteles.items():
-    st.markdown(f"""
-    <div class="box destino">
-    {ciudad}
-    </div>
-    """, unsafe_allow_html=True)
-    for hotel_item in lista_hoteles:
-        st.write(f"- {hotel_item}")
+    estado_civil = st.sidebar.selectbox(
+        "Estado civil",
+        [
+            "Casado / Convive",
+            "Mujer Soltera",
+            "Hombre Soltero",
+            "Divorciado"
+        ],
+        key="estado_civil"
+    )
 
-show_results = bool(cliente.strip())
+    edad = st.sidebar.number_input(
+        "Edad",
+        18,
+        100,
+        key="edad"
+    )
 
-col1, col2 = st.columns([2, 1])
+    residencia = st.sidebar.selectbox(
+        "Residente USA/Canadá?",
+        ["Sí", "No"],
+        key="residencia"
+    )
 
-with col2:
-    st.subheader("Zona y horario")
-    st.info(f"Zona detectada: {zona}\nHorario: {horarios[zona]}")
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Capacidad de pago")
 
-    st.subheader("Comisión")
-    st.markdown(f"""
-    <div class="comision">
-    Total: ${total:,.2f} USD
-    <br><br>
-    Ganancia por unidad: ${ganancia:,.2f}
-    </div>
-    """, unsafe_allow_html=True)
+    tipo_presupuesto = st.sidebar.radio(
+        "Qué dato ingresa",
+        ["Ingreso mensual", "Presupuesto de viaje"],
+        index=0,
+        key="tipo_presupuesto"
+    )
 
-    st.subheader("Speech")
-    if show_results:
-        if califica:
-            st.success(
-                """
-                El cliente califica para un paquete especial. Puede comunicarle que el viaje ya está aprobado y que solo necesita cubrir el deducible para comenzar a reservar.
-                Recuérdale que este paquete ofrece una vigencia amplia y un plan diseñado para maximizar su experiencia de vacaciones con el menor esfuerzo posible.
-                """
-            )
+    presupuesto = st.sidebar.number_input(
+        "Monto",
+        min_value=0,
+        value=1800,
+        step=100,
+        key="presupuesto"
+    )
+
+    deducible = st.sidebar.number_input(
+        "Monto deducible",
+        150,
+        500,
+        399,
+        key="deducible"
+    )
+
+    st.sidebar.markdown("---")
+
+    porcentaje = st.sidebar.radio(
+        "Comisión (%)",
+        [6, 8],
+        index=0,
+        key="porcentaje"
+    ) / 100
+
+    ventas = 1
+    st.sidebar.markdown("Solo se puede vender 1 paquete por registro.")
+    st.sidebar.markdown("---")
+
+    register_click = st.sidebar.button("Registrar venta")
+    st.sidebar.button("Limpiar formulario", on_click=reset_form)
+else:
+    st.sidebar.header("Panel administrativo")
+    st.sidebar.write("Seleccione una sección del panel arriba para ver opciones.")
+    cliente = ""
+    estado = None
+    estado_civil = None
+    edad = None
+    residencia = None
+    tipo_presupuesto = None
+    presupuesto = 0
+    deducible = 0
+    porcentaje = 0
+    ventas = 0
+    register_click = False
+
+# -----------------------------------
+# LÓGICA DE VENTAS
+# -----------------------------------
+
+if show_sales_sidebar:
+    zona = zonas[estado]
+    destino = st.session_state.get("destino", "N/A")
+    hotel = st.session_state.get("hotel", "N/A")
+    califica, paquete, vigencia, motivo = compute_package(estado_civil, edad, residencia, presupuesto)
+
+    ganancia = deducible * porcentaje
+    total = ganancia * ventas
+
+    if register_click:
+        if not cliente.strip():
+            st.sidebar.warning("Ingrese el nombre del cliente antes de registrar.")
         else:
-            st.warning(
-                """
-                El cliente no cumple los requisitos para los paquetes preferenciales en este momento.
-                Ofrece la alternativa MIX & MATCH, destacando los beneficios del plan y la posibilidad de mantener el interés mientras se busca una opción adecuada.
-                """
-            )
+            record = {
+                "timestamp": datetime.now().isoformat(sep=" ", timespec="seconds"),
+                "cliente": cliente,
+                "estado": estado,
+                "estado_civil": estado_civil,
+                "edad": edad,
+                "residencia": residencia,
+                "zona": zona,
+                "destino": destino,
+                "hotel": hotel,
+                "paquete": paquete,
+                "vigencia": vigencia,
+                "deducible": deducible,
+                "tipo_presupuesto": tipo_presupuesto,
+                "presupuesto": presupuesto,
+                "comision": porcentaje,
+                "ventas": ventas,
+                "ganancia_unitaria": ganancia,
+                "total": total
+            }
+            save_sale(record)
+            st.session_state["message"] = "Venta registrada correctamente. Puede iniciar una nueva operación con Limpiar formulario."
+            st.session_state["sale_registered"] = True
+else:
+    zona = "N/A"
+    ganancia = 0
+    total = 0
+    califica = False
+    paquete = ""
+    vigencia = ""
+    motivo = ""
 
-    if st.session_state["message"]:
-        st.success(st.session_state["message"])
-        st.session_state["message"] = ""
+# -----------------------------------
+# PÁGINAS PRINCIPALES
+# -----------------------------------
 
-with col1:
-    if show_results:
-        st.subheader("Resultado")
+if st.session_state["user_role"] == "admin":
+    page = st.session_state["page"]
 
-        if califica:
-            st.markdown(f"""
-            <div class="box aprobado">
-            Cliente: {cliente}
-            <br>
-            Paquete ideal: <strong>{paquete}</strong>
-            <br>
-            Vigencia: {vigencia}
-            <br>
-            Deducible: <strong>${deducible:,.2f}</strong>
-            <br>
-            {tipo_presupuesto}: <strong>${presupuesto:,.2f}</strong>
-            </div>
-            """, unsafe_allow_html=True)
+    if page == "📊 Dashboard":
+        st.subheader("Dashboard")
+        df = load_sales_df()
+        total_ventas = len(df)
+        cierres_dia = 0
+        mejor_asesor = "N/A"
+        dinero_entrado = 0
+        porcentaje_conversion = "N/A"
+
+        if not df.empty:
+            hoy = pd.Timestamp.now().normalize()
+            cierres_dia = df[df["timestamp"] >= hoy].shape[0]
+            mejor_asesor = df["paquete"].mode().iloc[0] if not df["paquete"].mode().empty else "N/A"
+            dinero_entrado = df["total"].sum()
+            porcentaje_conversion = "N/A"
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Ventas totales", total_ventas)
+        col2.metric("Cierres del día", cierres_dia)
+        col3.metric("Mejor paquete", mejor_asesor)
+        col4.metric("Dinero entrado", f"${dinero_entrado:,.2f}")
+        st.markdown("---")
+        st.write("El administrador controla todo el sistema. Puede gestionar usuarios, clientes, hoteles, comisiones, estadísticas y configuración.")
+
+    elif page == "👥 Usuarios":
+        st.subheader("Usuarios")
+        usuarios = [
+            {"Usuario": key, "Nombre": value["name"], "Rol": value["role"]}
+            for key, value in CREDENTIALS.items()
+        ]
+        st.table(usuarios)
+        st.info("El admin puede crear asesores, borrar asesores, cambiar contraseñas, bloquear cuentas y dar permisos.")
+
+    elif page == "📞 Clientes":
+        st.subheader("Clientes")
+        df = load_sales_df()
+        if df.empty:
+            st.info("No hay clientes registrados aún.")
         else:
-            st.markdown(f"""
-            <div class="box denegado">
-            Cliente: {cliente}
-            <br>
-            Enviar a MIX & MATCH
-            <br>
-            Deducible: <strong>${deducible:,.2f}</strong>
-            <br>
-            {tipo_presupuesto}: <strong>${presupuesto:,.2f}</strong>
-            <br>
-            {motivo}
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.info("Complete los datos del cliente para ver la recomendación.")
+            if "cliente" in df.columns and "paquete" in df.columns:
+                st.dataframe(df[["cliente", "paquete"]], use_container_width=True)
+            else:
+                st.dataframe(df, use_container_width=True)
+            st.write("Ejemplo: Cliente - Asesor - Resultado")
+
+    elif page == "🏨 Hoteles":
+        st.subheader("Hoteles")
+        for ciudad, lista_hoteles in hoteles.items():
+            st.markdown(f"**{ciudad}**")
+            for hotel_item in lista_hoteles:
+                st.write(f"- {hotel_item}")
+        st.info("El admin puede cambiar hoteles, zonas, horarios y reglas de calificación.")
+
+    elif page == "💰 Comisiones":
+        st.subheader("Comisiones")
+        df = load_sales_df()
+        if df.empty:
+            st.info("No hay datos de comisiones disponibles.")
+        else:
+            if "asesor" in df.columns:
+                total_por_asesor = df.groupby("asesor")["total"].sum().reset_index()
+                st.dataframe(total_por_asesor, use_container_width=True)
+            st.write("Comisiones totales y ventas individuales.")
+
+    elif page == "📈 Estadísticas":
+        st.subheader("Estadísticas")
+        render_statistics()
+
+    elif page == "⚙️ Configuración":
+        st.subheader("Configuración")
+        st.write("El admin puede cambiar horarios, zonas, porcentajes, reglas de calificación y permisos.")
+        for zona_item, horario in horarios.items():
+            st.write(f"- {zona_item}: {horario}")
+
+    elif page == "Ventas":
+        render_sales_page(
+            cliente,
+            zona,
+            horarios,
+            hotel,
+            destino,
+            califica,
+            paquete,
+            vigencia,
+            deducible,
+            tipo_presupuesto,
+            presupuesto,
+            ganancia,
+            total,
+            motivo
+        )
+
+else:
+    render_sales_page(
+        cliente,
+        zona,
+        horarios,
+        hotel,
+        destino,
+        califica,
+        paquete,
+        vigencia,
+        deducible,
+        tipo_presupuesto,
+        presupuesto,
+        ganancia,
+        total,
+        motivo
+    )
 
 st.markdown("""
 ### Acerca de la aplicación
