@@ -151,6 +151,8 @@ FIELDNAMES = [
     "paquete",
     "vigencia",
     "deducible",
+    "tipo_presupuesto",
+    "presupuesto",
     "comision",
     "ventas",
     "ganancia_unitaria",
@@ -179,33 +181,71 @@ def save_sale(record):
         writer.writerow(record)
 
 
-def compute_package(estado_civil, edad, residencia):
+def compute_package(estado_civil, edad, residencia, presupuesto):
     califica = False
     paquete = "MIX & MATCH"
     vigencia = "24 meses"
     motivo = "No cumple los requisitos"
 
-    if residencia == "Sí":
-        if estado_civil == "Casado / Convive":
-            if 25 <= edad <= 79:
-                califica = True
+    if residencia != "Sí":
+        motivo = "No es residente de USA/Canadá."
+        return califica, paquete, vigencia, motivo
+
+    if estado_civil == "Casado / Convive":
+        if 25 <= edad <= 79:
+            califica = True
+            if presupuesto >= 2200:
                 paquete = "VDL"
                 vigencia = "18 meses"
-        elif estado_civil == "Mujer Soltera":
-            if 25 <= edad <= 72:
-                califica = True
+            elif presupuesto >= 1500:
                 paquete = "HÍBRIDO"
                 vigencia = "18 meses"
-        elif estado_civil == "Hombre Soltero":
-            if 35 <= edad <= 59:
-                califica = True
+            else:
+                paquete = "MIX & MATCH"
+                vigencia = "24 meses"
+    elif estado_civil == "Mujer Soltera":
+        if 25 <= edad <= 72:
+            califica = True
+            if presupuesto >= 1800:
+                paquete = "HÍBRIDO"
+                vigencia = "18 meses"
+            elif presupuesto >= 1200:
                 paquete = "VDL"
                 vigencia = "18 meses"
-        elif estado_civil == "Divorciado":
-            if 25 <= edad <= 72:
-                califica = True
+            else:
+                paquete = "MIX & MATCH"
+                vigencia = "24 meses"
+    elif estado_civil == "Hombre Soltero":
+        if 35 <= edad <= 59:
+            califica = True
+            if presupuesto >= 2200:
+                paquete = "VDL"
+                vigencia = "18 meses"
+            elif presupuesto >= 1500:
                 paquete = "HÍBRIDO"
                 vigencia = "18 meses"
+            else:
+                paquete = "MIX & MATCH"
+                vigencia = "24 meses"
+    elif estado_civil == "Divorciado":
+        if 25 <= edad <= 72:
+            califica = True
+            if presupuesto >= 1800:
+                paquete = "HÍBRIDO"
+                vigencia = "18 meses"
+            elif presupuesto >= 1200:
+                paquete = "VDL"
+                vigencia = "18 meses"
+            else:
+                paquete = "MIX & MATCH"
+                vigencia = "24 meses"
+
+    if califica and paquete == "MIX & MATCH":
+        motivo = "El cliente califica, pero el presupuesto sugiere MIX & MATCH como opción ideal."
+    elif califica:
+        motivo = "El paquete ideal se calculó según el presupuesto y el perfil del cliente."
+    else:
+        motivo = "No cumple los requisitos de perfil para los paquetes preferenciales."
 
     return califica, paquete, vigencia, motivo
 
@@ -216,13 +256,19 @@ def reset_form():
     st.session_state["estado_civil"] = "Casado / Convive"
     st.session_state["edad"] = 35
     st.session_state["residencia"] = "Sí"
-    st.session_state["destino"] = "Orlando"
-    st.session_state["hotel"] = hoteles["Orlando"][0]
+    st.session_state["destino"] = "N/A"
+    st.session_state["hotel"] = "N/A"
     st.session_state["porcentaje"] = 6
     st.session_state["ventas"] = 1
     st.session_state["deducible"] = 399
+    st.session_state["tipo_presupuesto"] = "Ingreso mensual"
+    st.session_state["presupuesto"] = 1800
     st.session_state["message"] = ""
     st.session_state["sale_registered"] = False
+
+
+def update_hotel_options():
+    st.session_state["hotel"] = hoteles[st.session_state["destino"]][0]
 
 
 if "cliente" not in st.session_state:
@@ -274,7 +320,32 @@ residencia = st.sidebar.selectbox(
 
 st.sidebar.markdown("---")
 
-st.sidebar.markdown("Vista principal con todos los hoteles disponibles por ciudad.")
+st.sidebar.subheader("Capacidad de pago")
+
+tipo_presupuesto = st.sidebar.radio(
+    "Qué dato ingresa",
+    ["Ingreso mensual", "Presupuesto de viaje"],
+    index=0,
+    key="tipo_presupuesto"
+)
+
+presupuesto = st.sidebar.number_input(
+    "Monto",
+    min_value=0,
+    value=1800,
+    step=100,
+    key="presupuesto"
+)
+
+deducible = st.sidebar.number_input(
+    "Monto deducible",
+    150,
+    500,
+    399,
+    key="deducible"
+)
+
+st.sidebar.markdown("---")
 
 porcentaje = st.sidebar.radio(
     "Comisión (%)",
@@ -297,42 +368,41 @@ register_click = st.sidebar.button("Registrar venta")
 # -----------------------------------
 
 zona = zonas[estado]
-califica, paquete, vigencia, motivo = compute_package(estado_civil, edad, residencia)
-
-deducible = st.number_input(
-    "Monto deducible",
-    150,
-    500,
-    399,
-    key="deducible"
-)
+destino = st.session_state.get("destino", "N/A")
+hotel = st.session_state.get("hotel", "N/A")
+califica, paquete, vigencia, motivo = compute_package(estado_civil, edad, residencia, presupuesto)
 
 ganancia = deducible * porcentaje
 
 total = ganancia * ventas
 
 if register_click:
-    record = {
-        "timestamp": datetime.now().isoformat(sep=" ", timespec="seconds"),
-        "cliente": cliente,
-        "estado": estado,
-        "estado_civil": estado_civil,
-        "edad": edad,
-        "residencia": residencia,
-        "zona": zona,
-        "destino": "No aplica",
-        "hotel": "No aplica",
-        "paquete": paquete,
-        "vigencia": vigencia,
-        "deducible": deducible,
-        "comision": porcentaje,
-        "ventas": ventas,
-        "ganancia_unitaria": ganancia,
-        "total": total
-    }
-    save_sale(record)
-    st.session_state["message"] = "Venta registrada correctamente. Puede iniciar una nueva operación con Limpiar formulario."
-    st.session_state["sale_registered"] = True
+    if not cliente.strip():
+        st.sidebar.warning("Ingrese el nombre del cliente antes de registrar.")
+    else:
+        record = {
+            "timestamp": datetime.now().isoformat(sep=" ", timespec="seconds"),
+            "cliente": cliente,
+            "estado": estado,
+            "estado_civil": estado_civil,
+            "edad": edad,
+            "residencia": residencia,
+            "zona": zona,
+            "destino": st.session_state["destino"],
+            "hotel": st.session_state["hotel"],
+            "paquete": paquete,
+            "vigencia": vigencia,
+            "deducible": deducible,
+            "tipo_presupuesto": tipo_presupuesto,
+            "presupuesto": presupuesto,
+            "comision": porcentaje,
+            "ventas": ventas,
+            "ganancia_unitaria": ganancia,
+            "total": total
+        }
+        save_sale(record)
+        st.session_state["message"] = "Venta registrada correctamente. Puede iniciar una nueva operación con Limpiar formulario."
+        st.session_state["sale_registered"] = True
 
 # -----------------------------------
 # INTERFAZ
@@ -357,33 +427,12 @@ if st.session_state["show_records"]:
     else:
         st.info("No hay ventas registradas aún.")
 
+show_results = bool(cliente.strip())
+
 col1, col2 = st.columns([2, 1])
 
-with col1:
-    st.subheader("Resultado")
-
-    if califica:
-        st.markdown(f"""
-        <div class="box aprobado">
-        Cliente: {cliente or 'No ingresado'}
-        <br>
-        Califica para: <strong>{paquete}</strong>
-        <br>
-        Vigencia: {vigencia}
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown(f"""
-        <div class="box denegado">
-        Cliente: {cliente or 'No ingresado'}
-        <br>
-        Enviar a MIX & MATCH
-        <br>
-        {motivo}
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.subheader("Hoteles por ciudad")
+with col2:
+    st.subheader("Destinos y hoteles disponibles")
     for ciudad, lista_hoteles in hoteles.items():
         st.markdown(f"""
         <div class="box destino">
@@ -391,9 +440,8 @@ with col1:
         </div>
         """, unsafe_allow_html=True)
         for hotel_item in lista_hoteles:
-            st.write(hotel_item)
+            st.write(f"- {hotel_item}")
 
-with col2:
     st.subheader("Zona y horario")
     st.info(f"Zona detectada: {zona}\nHorario: {horarios[zona]}")
 
@@ -407,24 +455,60 @@ with col2:
     """, unsafe_allow_html=True)
 
     st.subheader("Speech")
-    if califica:
-        st.success(
-            """
-            El cliente califica para un paquete especial. Puede comunicarle que el viaje ya está aprobado y que solo necesita cubrir el deducible para comenzar a reservar.
-            Recuérdale que este paquete ofrece una vigencia amplia y un plan diseñado para maximizar su experiencia de vacaciones con el menor esfuerzo posible.
-            """
-        )
-    else:
-        st.warning(
-            """
-            El cliente no cumple los requisitos para los paquetes preferenciales en este momento.
-            Ofrece la alternativa MIX & MATCH, destacando los beneficios del plan y la posibilidad de mantener el interés mientras se busca una opción adecuada.
-            """
-        )
+    if show_results:
+        if califica:
+            st.success(
+                """
+                El cliente califica para un paquete especial. Puede comunicarle que el viaje ya está aprobado y que solo necesita cubrir el deducible para comenzar a reservar.
+                Recuérdale que este paquete ofrece una vigencia amplia y un plan diseñado para maximizar su experiencia de vacaciones con el menor esfuerzo posible.
+                """
+            )
+        else:
+            st.warning(
+                """
+                El cliente no cumple los requisitos para los paquetes preferenciales en este momento.
+                Ofrece la alternativa MIX & MATCH, destacando los beneficios del plan y la posibilidad de mantener el interés mientras se busca una opción adecuada.
+                """
+            )
 
     if st.session_state["message"]:
         st.success(st.session_state["message"])
         st.session_state["message"] = ""
+
+with col1:
+    if show_results:
+        st.subheader("Resultado")
+
+        if califica:
+            st.markdown(f"""
+            <div class="box aprobado">
+            Cliente: {cliente}
+            <br>
+            Paquete ideal: <strong>{paquete}</strong>
+            <br>
+            Vigencia: {vigencia}
+            <br>
+            Deducible: <strong>${deducible:,.2f}</strong>
+            <br>
+            {tipo_presupuesto}: <strong>${presupuesto:,.2f}</strong>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div class="box denegado">
+            Cliente: {cliente}
+            <br>
+            Enviar a MIX & MATCH
+            <br>
+            Deducible: <strong>${deducible:,.2f}</strong>
+            <br>
+            {tipo_presupuesto}: <strong>${presupuesto:,.2f}</strong>
+            <br>
+            {motivo}
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("Complete los datos del cliente para ver la recomendación.")
 
 st.markdown("""
 ### Acerca de la aplicación
