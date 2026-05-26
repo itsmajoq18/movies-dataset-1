@@ -1,0 +1,4 @@
+timestamp,cliente,estado,estado_civil,edad,residencia,zona,destino,hotel,paquete,vigencia,deducible,tipo_presupuesto,presupuesto,comision,ventas,ganancia_unitaria,total
+2026-05-26 08:27:33,Luciana Figueroa,Connecticut,Divorciado,25,Sí,Costa Este,N/A,N/A,MIX & MATCH,24 meses,399,Ingreso mensual,1000,0.06,1,23.939999999999998,23.939999999999998
+2026-05-26 08:27:56,Luciana Figueroa,Connecticut,Divorciado,25,Sí,Costa Este,N/A,N/A,MIX & MATCH,24 meses,399,Ingreso mensual,1000,0.06,1,23.939999999999998,23.939999999999998
+2026-05-26 08:32:53,Juliana Quiroga,Washington,Casado / Convive,26,Sí,Costa Oeste,N/A,N/A,HÍBRIDO,18 meses,399,Ingreso mensual,1800,0.08,1,31.92,31.92

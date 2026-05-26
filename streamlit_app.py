@@ -2,6 +2,8 @@ import csv
 import os
 from datetime import datetime
 
+import pandas as pd
+import matplotlib.pyplot as plt
 import streamlit as st
 
 # -----------------------------------
@@ -165,6 +167,23 @@ def ensure_sales_file():
         with open(SALES_FILE, mode="w", newline="", encoding="utf-8") as file:
             writer = csv.DictWriter(file, fieldnames=FIELDNAMES)
             writer.writeheader()
+        return
+
+    with open(SALES_FILE, mode="r", encoding="utf-8") as file:
+        lines = file.read().splitlines()
+
+    if not lines:
+        with open(SALES_FILE, mode="w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=FIELDNAMES)
+            writer.writeheader()
+        return
+
+    expected_header = ",".join(FIELDNAMES)
+    if lines[0].strip() != expected_header:
+        with open(SALES_FILE, mode="w", newline="", encoding="utf-8") as file:
+            file.write(expected_header + "\n")
+            for line in lines:
+                file.write(line + "\n")
 
 
 def load_sales():
@@ -179,6 +198,82 @@ def save_sale(record):
     with open(SALES_FILE, mode="a", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=FIELDNAMES)
         writer.writerow(record)
+
+
+def load_sales_df():
+    records = load_sales()
+    if not records:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(records)
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    for col in ["deducible", "presupuesto", "comision", "ventas", "ganancia_unitaria", "total"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
+def render_statistics():
+    st.subheader("Estadísticas de ventas")
+    df = load_sales_df()
+    if df.empty:
+        st.info("No hay ventas registradas para mostrar estadísticas aún.")
+        return
+
+    total_ventas = len(df)
+    paquete_mas_vendido = "N/A"
+    if "paquete" in df.columns and not df["paquete"].dropna().empty:
+        paquete_mode = df["paquete"].mode()
+        if not paquete_mode.empty:
+            paquete_mas_vendido = paquete_mode.iloc[0]
+    porcentaje_cierres = 100.0
+    ganancias_totales = df["total"].sum() if "total" in df.columns else 0
+
+    if "timestamp" in df.columns and df["timestamp"].notna().any():
+        df["mes"] = df["timestamp"].dt.to_period("M").astype(str)
+        ganancias_mes = (
+            df.groupby("mes")["total"].sum()
+            .reset_index()
+            .sort_values("mes")
+        )
+    else:
+        ganancias_mes = pd.DataFrame({"mes": [], "total": []})
+
+    paquete_counts = df["paquete"].value_counts()
+    mejores_asesores = "No hay datos de asesor disponibles"
+
+    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+    metric_col1.metric("Ventas", total_ventas)
+    metric_col2.metric("Paquete más vendido", paquete_mas_vendido)
+    metric_col3.metric("% de cierres", f"{porcentaje_cierres:.1f}%")
+    metric_col4.metric("Ganancias totales", f"${ganancias_totales:,.2f}")
+
+    st.markdown("---")
+    st.subheader("Distribución de paquetes")
+    st.bar_chart(paquete_counts)
+
+    st.markdown("---")
+    col_chart, col_pie = st.columns(2)
+    with col_chart:
+        st.subheader("Ganancias por mes")
+        if not ganancias_mes.empty:
+            st.line_chart(ganancias_mes.set_index("mes")[
+                "total"
+            ])
+        else:
+            st.info("No hay datos de fecha para mostrar ganancias mensuales.")
+
+    with col_pie:
+        st.subheader("Porción de paquetes")
+        fig, ax = plt.subplots(figsize=(4, 4))
+        ax.pie(paquete_counts.values, labels=paquete_counts.index, autopct="%.0f%%", startangle=140)
+        ax.axis("equal")
+        st.pyplot(fig)
+
+    st.markdown("---")
+    st.subheader("Mejores asesores")
+    st.info(mejores_asesores)
 
 
 def compute_package(estado_civil, edad, residencia, presupuesto):
@@ -265,10 +360,7 @@ def reset_form():
     st.session_state["presupuesto"] = 1800
     st.session_state["message"] = ""
     st.session_state["sale_registered"] = False
-
-
-def update_hotel_options():
-    st.session_state["hotel"] = hoteles[st.session_state["destino"]][0]
+    st.session_state["show_stats"] = False
 
 
 if "cliente" not in st.session_state:
@@ -279,6 +371,9 @@ if "message" not in st.session_state:
 
 if "sale_registered" not in st.session_state:
     st.session_state["sale_registered"] = False
+
+if "show_stats" not in st.session_state:
+    st.session_state["show_stats"] = False
 
 # -----------------------------------
 # SIDEBAR
@@ -363,6 +458,10 @@ st.sidebar.button("Limpiar formulario", on_click=reset_form)
 
 register_click = st.sidebar.button("Registrar venta")
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Asesor:** Juan Pablo Quiroga")
+st.sidebar.markdown("**Admin:** María José Quiroga")
+
 # -----------------------------------
 # LÓGICA
 # -----------------------------------
@@ -411,11 +510,20 @@ if register_click:
 st.title("Cerrador Pro")
 st.write("Sistema de calificación y registro de ventas para paquetes vacacionales.")
 
-if st.button("Ver registros de ventas"):
-    st.session_state["show_records"] = True
+btn_col1, btn_col2 = st.columns(2)
+with btn_col1:
+    if st.button("Ver registros de ventas"):
+        st.session_state["show_records"] = True
+        st.session_state["show_stats"] = False
+with btn_col2:
+    if st.button("Estadísticas"):
+        st.session_state["show_stats"] = True
+        st.session_state["show_records"] = False
 
 if "show_records" not in st.session_state:
     st.session_state["show_records"] = False
+if "show_stats" not in st.session_state:
+    st.session_state["show_stats"] = False
 
 if st.session_state["show_records"]:
     ventas_guardadas = load_sales()
@@ -427,21 +535,27 @@ if st.session_state["show_records"]:
     else:
         st.info("No hay ventas registradas aún.")
 
+if st.session_state["show_stats"]:
+    st.subheader("Estadísticas")
+    if st.button("Ocultar estadísticas"):
+        st.session_state["show_stats"] = False
+    render_statistics()
+
+st.subheader("Destinos y hoteles disponibles")
+for ciudad, lista_hoteles in hoteles.items():
+    st.markdown(f"""
+    <div class="box destino">
+    {ciudad}
+    </div>
+    """, unsafe_allow_html=True)
+    for hotel_item in lista_hoteles:
+        st.write(f"- {hotel_item}")
+
 show_results = bool(cliente.strip())
 
 col1, col2 = st.columns([2, 1])
 
 with col2:
-    st.subheader("Destinos y hoteles disponibles")
-    for ciudad, lista_hoteles in hoteles.items():
-        st.markdown(f"""
-        <div class="box destino">
-        {ciudad}
-        </div>
-        """, unsafe_allow_html=True)
-        for hotel_item in lista_hoteles:
-            st.write(f"- {hotel_item}")
-
     st.subheader("Zona y horario")
     st.info(f"Zona detectada: {zona}\nHorario: {horarios[zona]}")
 
