@@ -161,6 +161,12 @@ FIELDNAMES = [
     "total"
 ]
 
+CREDENTIALS = {
+    "juanpablo": {"name": "Juan Pablo Quiroga", "role": "asesor", "password": "asesor2026"},
+    "isabella": {"name": "Isabella", "role": "asesor", "password": "asesor2026"},
+    "mariajose": {"name": "María José Quiroga", "role": "admin", "password": "admin2026"}
+}
+
 
 def ensure_sales_file():
     if not os.path.exists(SALES_FILE):
@@ -191,6 +197,30 @@ def load_sales():
     with open(SALES_FILE, mode="r", newline="", encoding="utf-8") as file:
         reader = csv.DictReader(file)
         return list(reader)
+
+
+def login():
+    username = st.session_state.get("login_username", "").strip().lower()
+    password = st.session_state.get("login_password", "")
+    if username in CREDENTIALS and CREDENTIALS[username]["password"] == password:
+        st.session_state["user"] = CREDENTIALS[username]["name"]
+        st.session_state["user_role"] = CREDENTIALS[username]["role"]
+        st.session_state["is_authenticated"] = True
+        st.session_state["login_message"] = f"Bienvenido {CREDENTIALS[username]['name']}"
+        st.session_state["show_stats"] = False
+        st.session_state["show_records"] = False
+    else:
+        st.session_state["login_message"] = "Usuario o contraseña incorrectos"
+        st.session_state["is_authenticated"] = False
+
+
+def logout():
+    st.session_state["is_authenticated"] = False
+    st.session_state["user"] = None
+    st.session_state["user_role"] = None
+    st.session_state["login_message"] = ""
+    st.session_state["show_stats"] = False
+    st.session_state["show_records"] = False
 
 
 def save_sale(record):
@@ -375,13 +405,54 @@ if "sale_registered" not in st.session_state:
 if "show_stats" not in st.session_state:
     st.session_state["show_stats"] = False
 
+if "is_authenticated" not in st.session_state:
+    st.session_state["is_authenticated"] = False
+
+if "user" not in st.session_state:
+    st.session_state["user"] = None
+
+if "user_role" not in st.session_state:
+    st.session_state["user_role"] = None
+
+if "login_username" not in st.session_state:
+    st.session_state["login_username"] = ""
+
+if "login_password" not in st.session_state:
+    st.session_state["login_password"] = ""
+
+if "login_message" not in st.session_state:
+    st.session_state["login_message"] = ""
+
 # -----------------------------------
 # SIDEBAR
 # -----------------------------------
 
-st.sidebar.header("Datos del cliente")
+st.sidebar.header("Acceso")
 
-cliente = st.sidebar.text_input("Nombre del cliente", key="cliente")
+st.sidebar.text_input("Usuario", key="login_username")
+st.sidebar.text_input("Contraseña", type="password", key="login_password")
+if st.sidebar.button("Iniciar sesión"):
+    login()
+
+if st.session_state["login_message"]:
+    if st.session_state["is_authenticated"]:
+        st.sidebar.success(st.session_state["login_message"])
+    else:
+        st.sidebar.error(st.session_state["login_message"])
+
+if st.session_state["is_authenticated"]:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"**Conectado como:** {st.session_state['user']}")
+    st.sidebar.markdown(f"**Rol:** {st.session_state['user_role']}")
+    if st.sidebar.button("Cerrar sesión"):
+        logout()
+    st.sidebar.markdown("---")
+    st.sidebar.header("Datos del cliente")
+
+    cliente = st.sidebar.text_input("Nombre del cliente", key="cliente")
+else:
+    st.sidebar.info("Ingrese su usuario y contraseña para continuar.")
+    st.stop()
 
 estado = st.sidebar.selectbox(
     "Estado",
@@ -516,9 +587,12 @@ with btn_col1:
         st.session_state["show_records"] = True
         st.session_state["show_stats"] = False
 with btn_col2:
-    if st.button("Estadísticas"):
-        st.session_state["show_stats"] = True
-        st.session_state["show_records"] = False
+    if st.session_state["user_role"] == "admin":
+        if st.button("Estadísticas"):
+            st.session_state["show_stats"] = True
+            st.session_state["show_records"] = False
+    else:
+        st.info("Estadísticas solo disponibles para el admin.")
 
 if "show_records" not in st.session_state:
     st.session_state["show_records"] = False
